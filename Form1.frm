@@ -107,6 +107,7 @@ Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = True
 Attribute VB_Exposed = False
 Option Explicit
+
 Private Type POINTAPI
     x As Long
     y As Long
@@ -133,6 +134,13 @@ Private Type OPENFILENAME
     lpfnHook As Long             'Pointer to the hook procedure.
     lpTemplateName As String     'A string that contains a dialog template resource name. Only used with the hook procedure.
 End Type
+Private Type RECT
+    Left As Long
+    Top As Long
+    Right As Long
+    Bottom As Long
+End Type
+ 
 Private Declare Function GetOpenFileName Lib "comdlg32.dll" Alias "GetOpenFileNameA" (pOpenfilename As OPENFILENAME) As Long
 Private Declare Function GetSaveFileName Lib "comdlg32.dll" Alias "GetSaveFileNameA" (pOpenfilename As OPENFILENAME) As Long
 Private Declare Function SleepEx Lib "kernel32" (ByVal dwMilliseconds As Long, ByVal bAlertable As Long) As Long
@@ -143,6 +151,14 @@ Private Declare Function MapVirtualKey Lib "user32" Alias "MapVirtualKeyA" (ByVa
 Private Declare Sub keybd_event Lib "user32" (ByVal bVk As Byte, ByVal bScan As Byte, ByVal dwFlags As Long, ByVal dwExtraInfo As Long)
 Private Declare Sub mouse_event Lib "user32" (ByVal dwFlags As Long, ByVal dx As Long, ByVal dy As Long, ByVal cButtons As Long, ByVal dwExtraInfo As Long)
 Private Declare Function Beep Lib "kernel32" (ByVal dwFreq As Long, ByVal dwDuration As Long) As Long
+Private Declare Function FindWindow Lib "user32" Alias "FindWindowA" (ByVal lpClassName As String, ByVal lpWindowName As String) As Long
+Private Declare Function GetWindowText Lib "user32" Alias "GetWindowTextA" (ByVal hWnd As Long, ByVal lpString As String, ByVal cch As Long) As Long
+Private Declare Function GetWindowTextLength Lib "user32" Alias "GetWindowTextLengthA" (ByVal hWnd As Long) As Long
+Private Declare Function GetWindow Lib "user32" (ByVal hWnd As Long, ByVal wCmd As Long) As Long
+Private Declare Function GetWindowRect Lib "user32" (ByVal hWnd As Long, lpRect As RECT) As Long
+Private Declare Function SetForegroundWindow Lib "user32" (ByVal hWnd As Long) As Long
+
+Private Const GW_HWNDNEXT = 2
 Private Const KEYEVENTF_EXTENDEDKEY = &H1
 Private Const KEYEVENTF_KEYUP = &H2
 Private Const MOUSEEVENTF_ABSOLUTE = &H8000 '  absolute move
@@ -179,11 +195,32 @@ Private Const OFN_READONLY = &H1      ' Causes the Read Only check box to be sel
 Private Const OFN_SHAREAWARE = &H4000  ' Specifies that if a call to the OpenFile function fails because of a network sharing violation, the error is ignored and the dialog box returns the selected file name. If this flag is not set, the dialog box notifies your hook procedure when a network sharing violation occurs for the file name specified by the user. If you set the OFN_EXPLORER flag, the dialog box sends the CDN_SHAREVIOLATION message to the hook procedure. If you do not set OFN_EXPLORER, the dialog box sends the SHAREVISTRING registered message to the hook procedure.
 Private Const OFN_SHOWHELP = &H10      ' Causes the dialog box to display the Help button.
 
+Dim origin As POINTAPI
+
+Private Function GetHandleFromPartialCaption(ByRef lWnd As Long, ByVal sCaption As String) As Boolean
+    Dim lhWndP As Long
+    Dim sStr As String
+    GetHandleFromPartialCaption = False
+    lhWndP = FindWindow(vbNullString, vbNullString)     ' parent window
+    Do While lhWndP <> 0
+        sStr = String(GetWindowTextLength(lhWndP) + 1, Chr$(0))
+        GetWindowText lhWndP, sStr, Len(sStr)
+        sStr = Left(sStr, Len(sStr) - 1)
+        If InStr(1, sStr, sCaption) > 0 Then
+            GetHandleFromPartialCaption = True
+            lWnd = lhWndP
+            Exit Do
+        End If
+        lhWndP = GetWindow(lhWndP, GW_HWNDNEXT)
+    Loop
+End Function
+
 Private Sub Command1_Click()
     On Error Resume Next
     Dim n As Long, n_ As Long, i As Long
     Dim c As String, l As String
     Dim p1 As Long, p2 As Long
+    Dim originhWnd As Long
     n_ = 1
     Command1.Enabled = False
     Command3.Enabled = True
@@ -198,14 +235,14 @@ Private Sub Command1_Click()
             Else
                 l = Trim(Mid(Text1.Text, n_))
             End If
-            If l <> "" And l <> vbCrLf And Left(l, 1) <> "#" Then
+            If l <> vbNullString And l <> vbCrLf And Left(l, 1) <> "#" Then
                 n_ = InStr(1, l, " ")
                 If n_ > 0 Then
                     c = LCase(Left(l, n_ - 1))
                     l = Mid(l, n_ + 1)
                 Else
                     c = LCase(l)
-                    l = ""
+                    l = vbNullString
                 End If
                 Select Case c
                     Case "beep", "sound"
@@ -227,7 +264,7 @@ Private Sub Command1_Click()
                             SetCursorPos p1, p2
                         End If
                     Case "sleep", "wait", "delay"
-                        If l = "" Then
+                        If l = vbNullString Then
                             MsgBox "Too few parameters passed to" & vbCrLf & c, vbExclamation
                         Else
                             n_ = InStr(1, l, " ")
@@ -246,7 +283,7 @@ Private Sub Command1_Click()
                             If Command3.Enabled Then SleepEx p1 Mod 100, p2
                         End If
                     Case "click"
-                        If l = "" Then
+                        If l = vbNullString Then
                             p1 = 1
                         Else
                             p1 = CLng(l)
@@ -270,7 +307,7 @@ Private Sub Command1_Click()
                     Case "echo", "type"
                         SendKeys l
                     Case "press", "presskey"
-                        If l = "" Then
+                        If l = vbNullString Then
                             MsgBox "Too few parameters passed to" & vbCrLf & c, vbExclamation
                         Else
                             l = LCase(l)
@@ -323,7 +360,7 @@ Private Sub Command1_Click()
                             keybd_event p1, MapVirtualKey(p1, 0), KEYEVENTF_KEYUP + KEYEVENTF_EXTENDEDKEY, 0
                         End If
                     Case "keydown", "keydn"
-                        If l = "" Then
+                        If l = vbNullString Then
                             MsgBox "Too few parameters passed to" & vbCrLf & c, vbExclamation
                         Else
                             l = LCase(l)
@@ -375,7 +412,7 @@ Private Sub Command1_Click()
                             keybd_event p1, MapVirtualKey(p1, 0), KEYEVENTF_EXTENDEDKEY, 0
                         End If
                     Case "keyup"
-                        If l = "" Then
+                        If l = vbNullString Then
                             MsgBox "Too few parameters passed to" & vbCrLf & c, vbExclamation
                         Else
                             l = LCase(l)
@@ -432,8 +469,25 @@ Private Sub Command1_Click()
                         MsgBox l, vbSystemModal + vbInformation
                     Case "launch", "start", "run", "cmd"
                         Shell l, vbNormalFocus
-                    Case "end"
+                    Case "origin"       ' set the title of the window title to get the coordinates from
+                        If l <> vbNullString And GetHandleFromPartialCaption(originhWnd, l) Then
+                            Dim rc As RECT
+                            GetWindowRect originhWnd, rc
+                            origin.x = rc.Left
+                            origin.y = rc.Top
+                        Else
+                            origin.x = 0
+                            origin.y = 0
+                        End If
+                    Case "activate"     ' bring the target window to front
+                        If l <> vbNullString And GetHandleFromPartialCaption(originhWnd, l) Then
+                            SetForegroundWindow originhWnd
+                        End If
+                    Case "end"          ' finish script execution
                         n = 0
+                    Case "exit"         ' close the application
+                        Unload Me
+                        End
                     Case Else
                         MsgBox "Unknown command:" & vbCrLf & c, vbSystemModal + vbExclamation
                 End Select
@@ -537,6 +591,11 @@ Private Sub Form_KeyDown(KeyCode As Integer, Shift As Integer)
     If KeyCode = vbKeyEscape Then Unload Me
 End Sub
 
+Private Sub Form_Load()
+    origin.x = 0
+    origin.y = 0
+End Sub
+
 Private Sub Form_Resize()
     If ScaleWidth < 2775 Then Width = Width + 2775 - ScaleWidth
     If ScaleHeight < 3135 Then Height = Height + 3135 - Height
@@ -563,6 +622,6 @@ Private Sub Timer1_Timer()
     Static p_ As POINTAPI
     If p.x = p_.x And p.y = p_.y Then Exit Sub
     p_ = p
-    Text2.Text = p.x & " x " & p.y
+    Text2.Text = p.x - origin.x & " x " & p.y - origin.y
 End Sub
 
