@@ -27,6 +27,7 @@ The supported commands are the following:
     * `click 3` emulates the middle mouse button click;
 
 * `echo text`, `type text` emulate the text input by keyboard;
+
 * `press {keyname | keycode}`, `presskey {keyname | keycode}` emulate the press of a key denoted by its code or one of the following words:
 
     * `backspace`, `bksp`,
@@ -36,7 +37,7 @@ The supported commands are the following:
     * `ctrl`, `control`,
     * `alt`, `menu`,
     * `esc`, `escape`,
-    * `space`, ` `,
+    * `space`,
     * `page up`, `pgup`,
     * `page down`, `pgdn`,
     * `end`,
@@ -51,6 +52,7 @@ The supported commands are the following:
 * `keydown {keyname | keycode}`, `keydn {keyname | keycode}` emulate only the pressing of a key, not its release;
 
 * `keyup {keyname | keycode}` explicitly releases a key;
+
 * `alert message` and `info message` produce different types of message boxes;
 
 * `launch application`, `start application`, `run application`, `cmd application` try to execute an application;
@@ -61,8 +63,12 @@ The supported commands are the following:
 
 * `end` finishes the script execution;
 
-* `exit` closes the application *without saving anything*.
+* `exit` closes the application *without saving anything*;
+
+* `loop [start=1] end [step=1]` indicates the start of a loop, `next` marks its end, `%%%` stands for the iteration index.
 
 Use `Ctrl + Enter` key sequence to insert the cursor coordinates displayed at the bottom line of the window into the text area. They are used as the `move` command parameters.
 
 All the supported commands are case-insensitive.
+
+The script is paused while `Scroll Lock` in *On*.

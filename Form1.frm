@@ -215,65 +215,203 @@ Private Function GetHandleFromPartialCaption(ByRef lWnd As Long, ByVal sCaption 
     Loop
 End Function
 
+Private Function GetKeyCode(ByRef line As String) As Integer
+    Dim p1 As Integer
+    If Asc(line) > 96 And Asc(line) < 123 Then
+        Select Case line
+            Case "backspace", "bksp"
+                p1 = vbKeyBack
+            Case "tab"
+                p1 = vbKeyTab
+            Case "enter", "return"
+                p1 = vbKeyReturn
+            Case "shift"
+                p1 = vbKeyShift
+            Case "ctrl", "control"
+                p1 = vbKeyControl
+            Case "alt", "menu"
+                p1 = vbKeyMenu
+            Case "esc", "escape"
+                p1 = vbKeyEscape
+            Case "space"
+                p1 = vbKeySpace
+            Case "page up", "pgup"
+                p1 = vbKeyPageUp
+            Case "page down", "pgdn"
+                p1 = vbKeyPageDown
+            Case "end"
+                p1 = vbKeyEnd
+            Case "home"
+                p1 = vbKeyHome
+            Case "left", "left arrow", "arrow left"
+                p1 = vbKeyLeft
+            Case "up", "up arrow", "arrow up"
+                p1 = vbKeyUp
+            Case "right", "right arrow", "arrow right"
+                p1 = vbKeyRight
+            Case "down", "down arrow", "arrow down"
+                p1 = vbKeyDown
+            Case "print screen", "prt scr", "prt sc", "snapshot", "screenshot", "sshot", "shot"
+                p1 = vbKeySnapshot
+            Case "delete", "del"
+                p1 = vbKeyDelete
+            Case Else
+                p1 = 0
+        End Select
+    Else
+        p1 = CInt(line)
+    End If
+    GetKeyCode = p1
+End Function
+
+Function UnwrapLoops(code As String) As String
+    Dim line As String, cmd As String, params As String
+    Dim lineEndPosition As Long, lineStartPosition As Long, spacePosition As Long
+    Dim loopFound As Boolean
+    Dim insideLoop As Boolean, beforeLoop As String, withinLoop As String, afterLoop As String
+    Dim loopStart As Integer, loopEnd As Integer, loopStep As Integer
+    Dim loopBody As String
+    Dim i As Integer
+    Do
+        insideLoop = False
+        loopFound = False
+        lineStartPosition = 1
+        Do
+            lineEndPosition = InStr(lineStartPosition, code, vbCrLf)
+            If lineEndPosition > 0 Then
+                line = Trim(Mid(code, lineStartPosition, lineEndPosition - lineStartPosition))
+            Else
+                line = Trim(Mid(code, lineStartPosition))
+            End If
+            If line <> vbNullString And line <> vbCrLf And Left(line, 1) <> "#" Then
+                spacePosition = InStr(1, line, " ")
+                If spacePosition > 0 Then
+                    cmd = LCase(Left(line, spacePosition - 1))
+                    params = Mid(line, spacePosition + 1)
+                Else
+                    cmd = LCase(line)
+                    params = vbNullString
+                End If
+                Select Case cmd
+                    Case "loop"
+                        loopFound = True
+                        insideLoop = True
+                        beforeLoop = Left(code, lineStartPosition - 1)
+                        withinLoop = ""
+                        If params = vbNullString Then
+                            loopStart = 0
+                            loopEnd = 0
+                            loopStep = 1
+                        Else
+                            spacePosition = InStr(1, params, " ")
+                            If spacePosition = 0 Then
+                                loopStart = 1
+                                loopEnd = CInt(params)
+                                loopStep = 1
+                            Else
+                                loopStart = CInt(Left(params, spacePosition - 1))
+                                params = Mid(params, spacePosition + 1)
+                                spacePosition = InStr(1, params, " ")
+                                If spacePosition = 0 Then
+                                    loopEnd = CInt(Mid(params, spacePosition + 1))
+                                    loopStep = 1
+                                Else
+                                    loopEnd = CInt(Left(params, spacePosition - 1))
+                                    params = Mid(params, spacePosition + 1)
+                                    spacePosition = InStr(1, params, " ")
+                                    If spacePosition = 0 Then
+                                        loopStep = CInt(Mid(params, spacePosition + 1))
+                                    Else
+                                        loopStep = CInt(Left(params, spacePosition - 1))
+                                    End If
+                                End If
+                            End If
+                        End If
+                    Case "next"
+                        afterLoop = Mid(code, lineEndPosition + 2)
+                        loopBody = ""
+                        If insideLoop Then
+                            For i = loopStart To loopEnd Step loopStep
+                                loopBody = loopBody + Replace(withinLoop, "%%%", CStr(i))
+                            Next
+                        End If
+                        code = beforeLoop & loopBody & afterLoop
+                        insideLoop = False
+                        Exit Do
+                    Case Else
+                        If insideLoop Then
+                            withinLoop = withinLoop & line & vbCrLf
+                        End If
+                End Select
+            End If
+            lineStartPosition = lineEndPosition + 2
+        Loop While lineEndPosition > 0
+    Loop While loopFound
+    UnwrapLoops = code
+End Function
+
 Private Sub Command1_Click()
     On Error Resume Next
-    Dim n As Long, n_ As Long, i As Long
+    Dim lineEndPosition As Long, lineStartPosition As Long, spacePosition As Long, i As Long
     Dim c As String, l As String
     Dim p1 As Long, p2 As Long
     Dim originhWnd As Long
-    n_ = 1
+    Dim code As String
+    lineStartPosition = 1
     Command1.Enabled = False
     Command3.Enabled = True
     Text1.Locked = True
-    If Right(Text1.Text, 2) <> vbCrLf Then Text1.Text = Text1.Text + vbCrLf
+    code = Text1.Text
+    code = UnwrapLoops(code)
+    If Right(code, 2) <> vbCrLf Then code = code + vbCrLf
     Do
-        n = InStr(n_, Text1.Text, vbCrLf)
+        lineEndPosition = InStr(lineStartPosition, code, vbCrLf)
         ' Check whether Scroll Lock is OFF
         If GetKeyState(vbKeyScrollLock) = 0 Then
-            If n > 0 Then
-                l = Trim(Mid(Text1.Text, n_, n - n_))
+            If lineEndPosition > 0 Then
+                l = Trim(Mid(code, lineStartPosition, lineEndPosition - lineStartPosition))
             Else
-                l = Trim(Mid(Text1.Text, n_))
+                l = Trim(Mid(code, lineStartPosition))
             End If
             If l <> vbNullString And l <> vbCrLf And Left(l, 1) <> "#" Then
-                n_ = InStr(1, l, " ")
-                If n_ > 0 Then
-                    c = LCase(Left(l, n_ - 1))
-                    l = Mid(l, n_ + 1)
+                spacePosition = InStr(1, l, " ")
+                If spacePosition > 0 Then
+                    c = LCase(Left(l, spacePosition - 1))
+                    l = Mid(l, spacePosition + 1)
                 Else
                     c = LCase(l)
                     l = vbNullString
                 End If
                 Select Case c
                     Case "beep", "sound"
-                        n_ = InStr(1, l, " ")
-                        If n_ = 0 Then
+                        spacePosition = InStr(1, l, " ")
+                        If spacePosition = 0 Then
                             Interaction.Beep
                         Else
-                            p1 = CLng(Left(l, n_ - 1))
-                            p2 = CLng(Mid(l, n_ + 1))
+                            p1 = CLng(Left(l, spacePosition - 1))
+                            p2 = CLng(Mid(l, spacePosition + 1))
                             Beep p1, p2
                         End If
                     Case "mv", "move", "moveto"
-                        n_ = InStr(1, l, " ")
-                        If n_ = 0 Then
+                        spacePosition = InStr(1, l, " ")
+                        If spacePosition = 0 Then
                             MsgBox "Too few parameters passed to" & vbCrLf & c, vbExclamation
                         Else
-                            p1 = CLng(Left(l, n_ - 1))
-                            p2 = CLng(Mid(l, n_ + 1))
+                            p1 = CLng(Left(l, spacePosition - 1))
+                            p2 = CLng(Mid(l, spacePosition + 1))
                             SetCursorPos p1, p2
                         End If
                     Case "sleep", "wait", "delay"
                         If l = vbNullString Then
                             MsgBox "Too few parameters passed to" & vbCrLf & c, vbExclamation
                         Else
-                            n_ = InStr(1, l, " ")
-                            If n_ = 0 Then
+                            spacePosition = InStr(1, l, " ")
+                            If spacePosition = 0 Then
                                 p1 = CLng(l)
                                 p2 = 1
                             Else
-                                p1 = CLng(Left(l, n_ - 1))
-                                p2 = CLng(Mid(l, n_ + 1))
+                                p1 = CLng(Left(l, spacePosition - 1))
+                                p2 = CLng(Mid(l, spacePosition + 1))
                             End If
                             For i = 1 To p1 \ 100
                                 SleepEx 100, p2
@@ -311,157 +449,37 @@ Private Sub Command1_Click()
                             MsgBox "Too few parameters passed to" & vbCrLf & c, vbExclamation
                         Else
                             l = LCase(l)
-                            If Asc(l) > 96 And Asc(l) < 123 Then
-                                Select Case l
-                                    Case "backspace", "bksp"
-                                        p1 = vbKeyBack
-                                    Case "tab"
-                                        p1 = vbKeyTab
-                                    Case "enter", "return"
-                                        p1 = vbKeyReturn
-                                    Case "shift"
-                                        p1 = vbKeyShift
-                                    Case "ctrl", "control"
-                                        p1 = vbKeyControl
-                                    Case "alt", "menu"
-                                        p1 = vbKeyMenu
-                                    Case "esc", "escape"
-                                        p1 = vbKeyEscape
-                                    Case "space", " "
-                                        p1 = vbKeySpace
-                                    Case "page up", "pgup"
-                                        p1 = vbKeyPageUp
-                                    Case "page down", "pgdn"
-                                        p1 = vbKeyPageDown
-                                    Case "end"
-                                        p1 = vbKeyEnd
-                                    Case "home"
-                                        p1 = vbKeyHome
-                                    Case "left", "left arrow", "arrow left"
-                                        p1 = vbKeyLeft
-                                    Case "up", "up arrow", "arrow up"
-                                        p1 = vbKeyUp
-                                    Case "right", "right arrow", "arrow right"
-                                        p1 = vbKeyRight
-                                    Case "down", "down arrow", "arrow down"
-                                        p1 = vbKeyDown
-                                    Case "print screen", "prt scr", "prt sc", "snapshot", "screenshot", "sshot", "shot"
-                                        p1 = vbKeySnapshot
-                                    Case "delete", "del"
-                                        p1 = vbKeyDelete
-                                    Case Else
-                                        MsgBox "Invalid argument value in" & vbCrLf & c, vbExclamation
-                                        p1 = 0
-                                End Select
+                            p1 = GetKeyCode(l)
+                            If p1 = 0 Then
+                                MsgBox "Invalid argument value in" & vbCrLf & c, vbExclamation
                             Else
-                                p1 = CLng(l)
+                                keybd_event p1, MapVirtualKey(p1, 0), KEYEVENTF_EXTENDEDKEY, 0
+                                keybd_event p1, MapVirtualKey(p1, 0), KEYEVENTF_KEYUP + KEYEVENTF_EXTENDEDKEY, 0
                             End If
-                            keybd_event p1, MapVirtualKey(p1, 0), KEYEVENTF_EXTENDEDKEY, 0
-                            keybd_event p1, MapVirtualKey(p1, 0), KEYEVENTF_KEYUP + KEYEVENTF_EXTENDEDKEY, 0
                         End If
                     Case "keydown", "keydn"
                         If l = vbNullString Then
                             MsgBox "Too few parameters passed to" & vbCrLf & c, vbExclamation
                         Else
                             l = LCase(l)
-                            If Asc(l) > 96 And Asc(l) < 123 Then
-                                Select Case l
-                                    Case "backspace", "bksp"
-                                        p1 = vbKeyBack
-                                    Case "tab"
-                                        p1 = vbKeyTab
-                                    Case "enter", "return"
-                                        p1 = vbKeyReturn
-                                    Case "shift"
-                                        p1 = vbKeyShift
-                                    Case "ctrl", "control"
-                                        p1 = vbKeyControl
-                                    Case "alt", "menu"
-                                        p1 = vbKeyMenu
-                                    Case "esc", "escape"
-                                        p1 = vbKeyEscape
-                                    Case "space", " "
-                                        p1 = vbKeySpace
-                                    Case "page up", "pgup"
-                                        p1 = vbKeyPageUp
-                                    Case "page down", "pgdn"
-                                        p1 = vbKeyPageDown
-                                    Case "end"
-                                        p1 = vbKeyEnd
-                                    Case "home"
-                                        p1 = vbKeyHome
-                                    Case "left", "left arrow", "arrow left"
-                                        p1 = vbKeyLeft
-                                    Case "up", "up arrow", "arrow up"
-                                        p1 = vbKeyUp
-                                    Case "right", "right arrow", "arrow right"
-                                        p1 = vbKeyRight
-                                    Case "down", "down arrow", "arrow down"
-                                        p1 = vbKeyDown
-                                    Case "print screen", "prt scr", "prt sc", "snapshot", "screenshot", "sshot", "shot"
-                                        p1 = vbKeySnapshot
-                                    Case "delete", "del"
-                                        p1 = vbKeyDelete
-                                    Case Else
-                                        MsgBox "Invalid argument value in" & vbCrLf & c, vbExclamation
-                                        p1 = 0
-                                End Select
+                            p1 = GetKeyCode(l)
+                            If p1 = 0 Then
+                                MsgBox "Invalid argument value in" & vbCrLf & c, vbExclamation
                             Else
-                                p1 = CLng(l)
+                                keybd_event p1, MapVirtualKey(p1, 0), KEYEVENTF_EXTENDEDKEY, 0
                             End If
-                            keybd_event p1, MapVirtualKey(p1, 0), KEYEVENTF_EXTENDEDKEY, 0
                         End If
                     Case "keyup"
                         If l = vbNullString Then
                             MsgBox "Too few parameters passed to" & vbCrLf & c, vbExclamation
                         Else
                             l = LCase(l)
-                            If Asc(l) > 96 And Asc(l) < 123 Then
-                                Select Case l
-                                    Case "backspace", "bksp"
-                                        p1 = vbKeyBack
-                                    Case "tab"
-                                        p1 = vbKeyTab
-                                    Case "enter", "return"
-                                        p1 = vbKeyReturn
-                                    Case "shift"
-                                        p1 = vbKeyShift
-                                    Case "ctrl", "control"
-                                        p1 = vbKeyControl
-                                    Case "alt", "menu"
-                                        p1 = vbKeyMenu
-                                    Case "esc", "escape"
-                                        p1 = vbKeyEscape
-                                    Case "space", " "
-                                        p1 = vbKeySpace
-                                    Case "page up", "pgup"
-                                        p1 = vbKeyPageUp
-                                    Case "page down", "pgdn"
-                                        p1 = vbKeyPageDown
-                                    Case "end"
-                                        p1 = vbKeyEnd
-                                    Case "home"
-                                        p1 = vbKeyHome
-                                    Case "left", "left arrow", "arrow left"
-                                        p1 = vbKeyLeft
-                                    Case "up", "up arrow", "arrow up"
-                                        p1 = vbKeyUp
-                                    Case "right", "right arrow", "arrow right"
-                                        p1 = vbKeyRight
-                                    Case "down", "down arrow", "arrow down"
-                                        p1 = vbKeyDown
-                                    Case "print screen", "prt scr", "prt sc", "snapshot", "screenshot", "sshot", "shot"
-                                        p1 = vbKeySnapshot
-                                    Case "delete", "del"
-                                        p1 = vbKeyDelete
-                                    Case Else
-                                        MsgBox "Invalid argument value in" & vbCrLf & c, vbExclamation
-                                        p1 = 0
-                                End Select
+                            p1 = GetKeyCode(l)
+                            If p1 = 0 Then
+                                MsgBox "Invalid argument value in" & vbCrLf & c, vbExclamation
                             Else
-                                p1 = CLng(l)
+                                keybd_event p1, MapVirtualKey(p1, 0), KEYEVENTF_KEYUP + KEYEVENTF_EXTENDEDKEY, 0
                             End If
-                            keybd_event p1, MapVirtualKey(p1, 0), KEYEVENTF_KEYUP + KEYEVENTF_EXTENDEDKEY, 0
                         End If
                     Case "alert"
                         MsgBox l, vbSystemModal + vbExclamation
@@ -484,7 +502,7 @@ Private Sub Command1_Click()
                             SetForegroundWindow originhWnd
                         End If
                     Case "end"          ' finish script execution
-                        n = 0
+                        lineEndPosition = 0
                     Case "exit"         ' close the application
                         Unload Me
                         End
@@ -492,12 +510,12 @@ Private Sub Command1_Click()
                         MsgBox "Unknown command:" & vbCrLf & c, vbSystemModal + vbExclamation
                 End Select
             End If
-            n_ = n + 2
+            lineStartPosition = lineEndPosition + 2
         Else
             SleepEx 20, 1
         End If
         DoEvents
-    Loop While n > 0 And Command3.Enabled
+    Loop While lineEndPosition > 0 And Command3.Enabled
     Text1.Locked = False
     Command1.Enabled = True
     Command3.Enabled = False
